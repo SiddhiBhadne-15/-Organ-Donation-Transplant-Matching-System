@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Organ Donation & Transplant Matching System</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/sql-wasm.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #f0f4f8; color: #222; }
+
+  header {
+    background: #1a5276;
+    color: white;
+    padding: 16px 24px;
+    text-align: center;
+  }
+  header h1 { font-size: 1.4em; }
+  header p { font-size: 0.85em; margin-top: 4px; color: #aed6f1; }
+
+  .tabs {
+    display: flex;
+    flex-wrap: wrap;
+    background: #154360;
+    padding: 0 12px;
+  }
+  .tab-btn {
+    padding: 10px 16px;
+    background: none;
+    border: none;
+    color: #aed6f1;
+    cursor: pointer;
+    font-size: 0.82em;
+    font-weight: bold;
+    border-bottom: 3px solid transparent;
+  }
+  .tab-btn.active { color: #fff; border-bottom: 3px solid #f0b27a; }
+  .tab-btn:hover { color: #fff; }
+
+  .tab-content { display: none; padding: 20px; }
+  .tab-content.active { display: block; }
+
+  .card {
+    background: white;
+    border-radius: 6px;
+    padding: 18px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  }
+  .card h2 { font-size: 1em; color: #1a5276; margin-bottom: 12px; border-bottom: 1px solid #eee; padding-bottom: 8px; }
+
+  .form-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+  .form-group { display: flex; flex-direction: column; flex: 1; min-width: 140px; }
+  .form-group label { font-size: 0.78em; color: #555; margin-bottom: 3px; }
+  .form-group input, .form-group select {
+    padding: 7px 9px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 0.85em;
+  }
+
+  button.btn {
+    padding: 8px 18px;
+    background: #1a5276;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85em;
+    margin-top: 4px;
+  }
+  button.btn:hover { background: #154360; }
+  button.btn.danger { background: #922b21; }
+  button.btn.success { background: #1e8449; }
+
+  .query-btn {
+    padding: 7px 14px;
+    margin: 4px;
+    background: #2471a3;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8em;
+  }
+  .query-btn:hover { background: #1a5276; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.82em; }
+  th { background: #1a5276; color: white; padding: 8px 10px; text-align: left; }
+  td { padding: 7px 10px; border-bottom: 1px solid #eee; }
+  tr:hover td { background: #eaf4fb; }
+
+  .msg { padding: 8px 12px; border-radius: 4px; font-size: 0.85em; margin-top: 10px; }
+  .msg.ok { background: #d5f5e3; color: #1e8449; }
+  .msg.err { background: #fadbd8; color: #922b21; }
+
+  .sql-box { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; font-size: 0.82em; height: 80px; resize: vertical; }
+  .result-area { margin-top: 14px; overflow-x: auto; }
+
+  #loading { text-align: center; padding: 40px; color: #555; font-size: 1em; }
+  #app { display: none; }
+</style>
+</head>
+<body>
+
+<div id="loading">⏳ Loading database engine, please wait...</div>
+
+<div id="app">
+<header>
+  <h1>🏥 Organ Donation & Transplant Matching System</h1>
+  <p>DBMS Project — SVKM's NMIMS | B.Tech CE Sem 4 | AY 2025-26</p>
+</header>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('dashboard')">📊 Dashboard</button>
+  <button class="tab-btn" onclick="switchTab('donor')">🩸 Donors</button>
+  <button class="tab-btn" onclick="switchTab('recipient')">🧑‍⚕️ Recipients</button>
+  <button class="tab-btn" onclick="switchTab('hospital')">🏥 Hospitals</button>
+  <button class="tab-btn" onclick="switchTab('doctor')">👨‍⚕️ Doctors</button>
+  <button class="tab-btn" onclick="switchTab('organ')">🫁 Organs</button>
+  <button class="tab-btn" onclick="switchTab('transplant')">💉 Transplants</button>
+  <button class="tab-btn" onclick="switchTab('queries')">🔍 SQL Queries</button>
+  <button class="tab-btn" onclick="switchTab('custom')">⌨️ Custom SQL</button>
+</div>
+
+<!-- DASHBOARD -->
+<div id="tab-dashboard" class="tab-content active">
+  <div class="card">
+    <h2>📈 System Overview</h2>
+    <div id="dashboard-stats" style="display:flex;flex-wrap:wrap;gap:12px;"></div>
+  </div>
+  <div class="card">
+    <h2>🔄 Organ Matching — Available Donors vs Waiting Recipients</h2>
+    <div class="result-area" id="match-table"></div>
+  </div>
+</div>
+
+<!-- DONOR TAB -->
+<div id="tab-donor" class="tab-content">
+  <div class="card">
+    <h2>➕ Add Donor</h2>
+    <div class="form-row">
+      <div class="form-group"><label>Donor ID</label><input id="d_id" placeholder="e.g. D011"></div>
+      <div class="form-group"><label>Name</label><input id="d_name" placeholder="Full Name"></div>
+      <div class="form-group"><label>Age</label><input id="d_age" type="number" placeholder="Age"></div>
+      <div class="form-group"><label>Gender</label>
+        <select id="d_gender"><option>Male</option><option>Female</option><option>Other</option></select>
+      </div>
+      <div class="form-group"><label>Blood Group</label>
+        <select id="d_blood"><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>O+</option><option>O-</option><option>AB+</option><option>AB-</option></select>
+      </div>
+      <div class="form-group"><label>Contact No</label><input id="d_contact" placeholder="Phone number"></div>
+      <div class="form-group"><label>Organ Donated</label>
+        <select id="d_organ"><option>Kidney</option><option>Liver</option><option>Heart</option><option>Lung</option><option>Pancreas</option><option>Cornea</option></select>
+      </div>
+    </div>
+    <button class="btn" onclick="addDonor()">Add Donor</button>
+    <div id="donor-msg"></div>
+  </div>
+  <div class="card">
+    <h2>📋 All Donors</h2>
+    <button class="btn success" onclick="loadTable('Donor','donor-table')">🔄 Refresh</button>
+    <div class="result-area" id="donor-table"></div>
+  </div>
+  <div class="card">
+    <h2>🗑️ Delete Donor</h2>
+    <div class="form-row">
+      <div class="form-group"><label>Donor ID</label><input id="del_donor_id" placeholder="e.g. D001"></div>
+    </div>
+    <button class="btn danger" onclick="deleteDonor()">Delete Donor</button>
+    <div id="del-donor-msg"></div>
+  </div>
+</div>
+
+<!-- RECIPIENT TAB -->
+<div id="tab-recipient" class="tab-content">
+  <div class="card">
+    <h2>➕ Add Recipient</h2>
+    <div class="form-row">
+      <div class="form-group"><label>Recipient ID</label><input id="r_id" placeholder="e.g. R011"></div>
+      <div class="form-group"><label>Name</label><input id="r_name" placeholder="Full Name"></div>
+      <div class="form-group"><label>Age</label><input id="r_age" type="number" placeholder="Age"></div>
+      <div class="form-group"><label>Blood Group</label>
+        <select id="r_blood"><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>O+</option><option>O-</option><option>AB+</option><option>AB-</option></select>
+      </div>
+      <div class="form-group"><label>Required Organ</label>
+        <select id="r_organ"><option>Kidney</option><option>Liver</option><option>Heart</option><option>Lung</option><option>Pancreas</option><option>Cornea</option></select>
+      </div>
+      <div class="form-group"><label>Priority Level</label>
+        <select id="r_priority"><option>Critical</option><option>High</option><option>Medium</option><option>Low</option></select>
+      </div>
+      <div class="form-group"><label>Hospital ID</label><input id="r_hospital" placeholder="e.g. H001"></div>
+    </div>
+    <button class="btn" onclick="addRecipient()">Add Recipient</button>
+    <div id="recipient-msg"></div>
+  </div>
+  <div class="card">
+    <h2>📋 All Recipients</h2>
+    <button class="btn success" onclick="loadTable('Recipient','recipient-table')">🔄 Refresh</button>
+    <div class="result-area" id="recipient-table"></div>
+  </div>
+</div>
+
+<!-- HOSPITAL TAB -->
+<div id="tab-hospital" class="tab-content">
+  <div class="card">
+    <h2>➕ Add Hospital</h2>
+    <div class="form-row">
+      <div class="form-group"><label>Hospital ID</label><input id="h_id" placeholder="e.g. H011"></div>
+      <div class="form-group"><label>Hospital Name</label><input id="h_name" placeholder="Name"></div>
+      <div class="form-group"><label>Location</label><input id="h_loc" placeholder="City"></div>
+      <div class="form-group"><label>Contact No</label><input id="h_contact" placeholder="Phone"></div>
+    </div>
+    <button class="btn" onclick="addHospital()">Add Hospital</button>
+    <div id="hospital-msg"></div>
+  </div>
+  <div class="card">
+    <h2>📋 All Hospitals</h2>
+    <button class="btn success" onclick="loadTable('Hospital','hospital-table')">🔄 Refresh</button>
+    <div class="result-area" id="hospital-table"></div>
+  </div>
+</div>
+
+<!-- DOCTOR TAB -->
+<div id="tab-doctor" class="tab-content">
+  <div class="card">
+    <h2>➕ Add Doctor</h2>
+    <div class="form-row">
+      <div class="form-group"><label>Doctor ID</label><input id="doc_id" placeholder="e.g. DR011"></div>
+      <div class="form-group"><label>Doctor Name</label><input id="doc_name" placeholder="Name"></div>
+      <div class="form-group"><label>Specialization</label><input id="doc_spec" placeholder="e.g. Cardiology"></div>
+      <div class="form-group"><label>Contact No</label><input id="doc_contact" placeholder="Phone"></div>
+      <div class="form-group"><label>Hospital ID</label><input id="doc_hospital" placeholder="e.g. H001"></div>
+    </div>
+    <button class="btn" onclick="addDoctor()">Add Doctor</button>
+    <div id="doctor-msg"></div>
+  </div>
+  <div class="card">
+    <h2>📋 All Doctors</h2>
+    <button class="btn success" onclick="loadTable('Doctor','doctor-table')">🔄 Refresh</button>
+    <div class="result-area" id="doctor-table"></div>
+  </div>
+</div>
+
+<!-- ORGAN TAB -->
+<div id="tab-organ" class="tab-content">
+  <div class="card">
+    <h2>➕ Add Organ</h2>
+    <div class="form-row">
+      <div class="form-group"><label>Organ ID</label><input id="o_id" placeholder="e.g. ORG011"></div>
+      <div class="form-group"><label>Organ Type</label>
+        <select id="o_type"><option>Kidney</option><option>Liver</option><option>Heart</option><option>Lung</option><option>Pancreas</option><option>Cornea</option></select>
+      </div>
+      <div class="form-group"><label>Blood Group</label>
+        <select id="o_blood"><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>O+</option><option>O-</option><option>AB+</option><option>AB-</option></select>
+      </div>
+      <div class="form-group"><label>Donor ID</label><input id="o_donor" placeholder="e.g. D001"></div>
+      <div class="form-group"><label>Bank ID</label><input id="o_bank" placeholder="e.g. OB001"></div>
+      <div class="form-group"><label>Status</label>
+        <select id="o_status"><option>Available</option><option>Matched</option><option>Transplanted</option></select>
+      </div>
+    </div>
+    <button class="btn" onclick="addOrgan()">Add Organ</button>
+    <div id="organ-msg"></div>
+  </div>
+  <div class="card">
+    <h2>📋 All Organs</h2>
+    <button class="btn success" onclick="loadTable('Organ','organ-table')">🔄 Refresh</button>
+    <div class="result-area" id="organ-table"></div>
+  </div>
+</div>
+
+<!-- TRANSPLANT TAB -->
+<div id="tab-transplant" class="tab-content">
+  <div class="card">
+    <h2>➕ Record Transplant</h2>
+    <div class="form-row">
+      <div class="form-group"><label>Transplant ID</label><input id="t_id" placeholder="e.g. T011"></div>
+      <div class="form-group"><label>Donor ID</label><input id="t_donor" placeholder="e.g. D001"></div>
+      <div class="form-group"><label>Recipient ID</label><input id="t_recipient" placeholder="e.g. R001"></div>
+      <div class="form-group"><label>Organ ID</label><input id="t_organ" placeholder="e.g. ORG001"></div>
+      <div class="form-group"><label>Hospital ID</label><input id="t_hospital" placeholder="e.g. H001"></div>
+      <div class="form-group"><label>Doctor ID</label><input id="t_doctor" placeholder="e.g. DR001"></div>
+      <div class="form-group"><label>Transplant Date</label><input id="t_date" type="date"></div>
+      <div class="form-group"><label>Status</label>
+        <select id="t_status"><option>Scheduled</option><option>Completed</option><option>Cancelled</option></select>
+      </div>
+    </div>
+    <button class="btn" onclick="addTransplant()">Record Transplant</button>
+    <div id="transplant-msg"></div>
+  </div>
+  <div class="card">
+    <h2>📋 All Transplants</h2>
+    <button class="btn success" onclick="loadTable('Transplant','transplant-table')">🔄 Refresh</button>
+    <div class="result-area" id="transplant-table"></div>
+  </div>
+</div>
+
+<!-- PREDEFINED SQL QUERIES TAB -->
+<div id="tab-queries" class="tab-content">
+  <div class="card">
+    <h2>🔍 Predefined SQL Queries (from Project)</h2>
+    <p style="font-size:0.82em;color:#555;margin-bottom:12px;">Click any query button to run it instantly and see results.</p>
+
+    <div>
+      <button class="query-btn" onclick="runQuery('q1')">Q1: All Donors</button>
+      <button class="query-btn" onclick="runQuery('q2')">Q2: All Recipients</button>
+      <button class="query-btn" onclick="runQuery('q3')">Q3: Critical Priority Recipients</button>
+      <button class="query-btn" onclick="runQuery('q4')">Q4: Donors by Blood Group B+</button>
+      <button class="query-btn" onclick="runQuery('q5')">Q5: Donors aged > 30</button>
+      <button class="query-btn" onclick="runQuery('q6')">Q6: Count Donors per Blood Group</button>
+      <button class="query-btn" onclick="runQuery('q7')">Q7: Available Organs</button>
+      <button class="query-btn" onclick="runQuery('q8')">Q8: Donors donating Kidney</button>
+      <button class="query-btn" onclick="runQuery('q9')">Q9: Transplant with Donor & Recipient Names (JOIN)</button>
+      <button class="query-btn" onclick="runQuery('q10')">Q10: Doctor with Hospital Name (JOIN)</button>
+      <button class="query-btn" onclick="runQuery('q11')">Q11: Recipients at each Hospital (GROUP BY)</button>
+      <button class="query-btn" onclick="runQuery('q12')">Q12: Transplants in 2024 (WHERE + date)</button>
+      <button class="query-btn" onclick="runQuery('q13')">Q13: Avg Age of Donors</button>
+      <button class="query-btn" onclick="runQuery('q14')">Q14: Max & Min Age of Recipients</button>
+      <button class="query-btn" onclick="runQuery('q15')">Q15: Organs stored per Bank (GROUP BY)</button>
+      <button class="query-btn" onclick="runQuery('q16')">Q16: Recipients needing Heart or Liver (IN)</button>
+      <button class="query-btn" onclick="runQuery('q17')">Q17: Donors whose name starts with 'A' (LIKE)</button>
+      <button class="query-btn" onclick="runQuery('q18')">Q18: Transplant details full JOIN</button>
+      <button class="query-btn" onclick="runQuery('q19')">Q19: Hospitals with transplants (Subquery)</button>
+      <button class="query-btn" onclick="runQuery('q20')">Q20: Doctors sorted by name (ORDER BY)</button>
+      <button class="query-btn" onclick="runQuery('q21')">Q21: Recipient blood group compatibility with available organs</button>
+      <button class="query-btn" onclick="runQuery('q22')">Q22: Total transplants per hospital</button>
+    </div>
+    <div class="result-area" id="query-result" style="margin-top:16px;"></div>
+  </div>
+</div>
+
+<!-- CUSTOM SQL TAB -->
+<div id="tab-custom" class="tab-content">
+  <div class="card">
+    <h2>⌨️ Custom SQL Query</h2>
+    <p style="font-size:0.82em;color:#555;margin-bottom:10px;">Tables: <b>Donor, Recipient, Hospital, Doctor, Organ, Organ_Bank, Transplant</b></p>
+    <textarea class="sql-box" id="custom-sql" placeholder="SELECT * FROM Donor;"></textarea>
+    <br>
+    <button class="btn" onclick="runCustomSQL()">▶ Run Query</button>
+    <div class="result-area" id="custom-result"></div>
+  </div>
+</div>
+
+</div><!-- end #app -->
+
+<script>
+let db;
+
+const QUERIES = {
+  q1:  `SELECT * FROM Donor;`,
+  q2:  `SELECT * FROM Recipient;`,
+  q3:  `SELECT * FROM Recipient WHERE Priority_level = 'Critical';`,
+  q4:  `SELECT * FROM Donor WHERE Blood_group = 'B+';`,
+  q5:  `SELECT * FROM Donor WHERE Age > 30;`,
+  q6:  `SELECT Blood_group, COUNT(*) AS Total_Donors FROM Donor GROUP BY Blood_group;`,
+  q7:  `SELECT * FROM Organ WHERE Status = 'Available';`,
+  q8:  `SELECT * FROM Donor WHERE Organ_donated = 'Kidney';`,
+  q9:  `SELECT T.Transplant_Id, D.Name AS Donor_Name, R.Name AS Recipient_Name, T.Transplant_date
+        FROM Transplant T
+        JOIN Donor D ON T.Donor_Id = D.Donor_Id
+        JOIN Recipient R ON T.Recipient_Id = R.Recipient_Id;`,
+  q10: `SELECT DR.Doctor_name, DR.Specialization, H.Hospital_name, H.Location
+        FROM Doctor DR
+        JOIN Hospital H ON DR.Hospital_Id = H.Hospital_Id;`,
+  q11: `SELECT H.Hospital_name, COUNT(R.Recipient_Id) AS Total_Recipients
+        FROM Hospital H
+        LEFT JOIN Recipient R ON H.Hospital_Id = R.Hospital_Id
+        GROUP BY H.Hospital_name;`,
+  q12: `SELECT * FROM Transplant WHERE strftime('%Y', Transplant_date) = '2024';`,
+  q13: `SELECT AVG(Age) AS Average_Age FROM Donor;`,
+  q14: `SELECT MAX(Age) AS Max_Age, MIN(Age) AS Min_Age FROM Recipient;`,
+  q15: `SELECT OB.Bank_name, COUNT(O.Organ_Id) AS Organs_Stored
+        FROM Organ_Bank OB
+        LEFT JOIN Organ O ON OB.Bank_Id = O.Bank_Id
+        GROUP BY OB.Bank_name;`,
+  q16: `SELECT * FROM Recipient WHERE Required_organ IN ('Heart', 'Liver');`,
+  q17: `SELECT * FROM Donor WHERE Name LIKE 'A%';`,
+  q18: `SELECT T.Transplant_Id, D.Name AS Donor, R.Name AS Recipient,
+              O.Organ_Type, H.Hospital_name, DR.Doctor_name, T.Transplant_date, T.Status
+        FROM Transplant T
+        JOIN Donor D ON T.Donor_Id = D.Donor_Id
+        JOIN Recipient R ON T.Recipient_Id = R.Recipient_Id
+        JOIN Organ O ON T.Organ_Id = O.Organ_Id
+        JOIN Hospital H ON T.Hospital_Id = H.Hospital_Id
+        JOIN Doctor DR ON T.Doctor_Id = DR.Doctor_Id;`,
+  q19: `SELECT DISTINCT Hospital_name FROM Hospital
+        WHERE Hospital_Id IN (SELECT Hospital_Id FROM Transplant);`,
+  q20: `SELECT * FROM Doctor ORDER BY Doctor_name ASC;`,
+  q21: `SELECT R.Name AS Recipient, R.Blood_group, R.Required_organ, O.Organ_Id, O.Status
+        FROM Recipient R
+        JOIN Organ O ON R.Required_organ = O.Organ_Type AND R.Blood_group = O.Blood_group
+        WHERE O.Status = 'Available';`,
+  q22: `SELECT H.Hospital_name, COUNT(T.Transplant_Id) AS Total_Transplants
+        FROM Hospital H
+        LEFT JOIN Transplant T ON H.Hospital_Id = T.Hospital_Id
+        GROUP BY H.Hospital_name ORDER BY Total_Transplants DESC;`
+};
+
+function switchTab(name) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  event.target.classList.add('active');
+  if (name === 'dashboard') loadDashboard();
+}
+
+function execSQL(sql) {
+  try {
+    return { ok: true, result: db.exec(sql) };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+function renderTable(results) {
+  if (!results || results.length === 0)
+    return '<p style="color:#888;font-size:0.85em;padding:8px">No records found.</p>';
+  const r = results[0];
+  let html = '<table><thead><tr>' + r.columns.map(c => `<th>${c}</th>`).join('') + '</tr></thead><tbody>';
+  r.values.forEach(row => {
+    html += '<tr>' + row.map(v => `<td>${v ?? ''}</td>`).join('') + '</tr>';
+  });
+  html += '</tbody></table>';
+  return html;
+}
+
+function loadTable(tableName, targetId) {
+  const res = execSQL(`SELECT * FROM ${tableName};`);
+  document.getElementById(targetId).innerHTML = res.ok ? renderTable(res.result) : `<p class="msg err">${res.error}</p>`;
+}
+
+function showMsg(id, text, ok) {
+  const el = document.getElementById(id);
+  el.innerHTML = `<div class="msg ${ok ? 'ok' : 'err'}">${text}</div>`;
+  setTimeout(() => el.innerHTML = '', 3000);
+}
+
+function addDonor() {
+  const id = document.getElementById('d_id').value.trim();
+  const name = document.getElementById('d_name').value.trim();
+  const age = document.getElementById('d_age').value;
+  const gender = document.getElementById('d_gender').value;
+  const blood = document.getElementById('d_blood').value;
+  const contact = document.getElementById('d_contact').value.trim();
+  const organ = document.getElementById('d_organ').value;
+  if (!id || !name || !age) return showMsg('donor-msg', 'Please fill Donor ID, Name and Age.', false);
+  const res = execSQL(`INSERT INTO Donor VALUES ('${id}','${name}',${age},'${gender}','${blood}','${contact}','${organ}');`);
+  showMsg('donor-msg', res.ok ? '✅ Donor added!' : '❌ ' + res.error, res.ok);
+  if (res.ok) loadTable('Donor', 'donor-table');
+}
+
+function deleteDonor() {
+  const id = document.getElementById('del_donor_id').value.trim();
+  if (!id) return showMsg('del-donor-msg', 'Enter Donor ID.', false);
+  const res = execSQL(`DELETE FROM Donor WHERE Donor_Id = '${id}';`);
+  showMsg('del-donor-msg', res.ok ? '✅ Deleted (if existed).' : '❌ ' + res.error, res.ok);
+  if (res.ok) loadTable('Donor', 'donor-table');
+}
+
+function addRecipient() {
+  const id = document.getElementById('r_id').value.trim();
+  const name = document.getElementById('r_name').value.trim();
+  const age = document.getElementById('r_age').value;
+  const blood = document.getElementById('r_blood').value;
+  const organ = document.getElementById('r_organ').value;
+  const priority = document.getElementById('r_priority').value;
+  const hospital = document.getElementById('r_hospital').value.trim();
+  if (!id || !name || !age) return showMsg('recipient-msg', 'Fill ID, Name and Age.', false);
+  const res = execSQL(`INSERT INTO Recipient VALUES ('${id}','${name}',${age},'${blood}','${organ}','${priority}','${hospital}');`);
+  showMsg('recipient-msg', res.ok ? '✅ Recipient added!' : '❌ ' + res.error, res.ok);
+  if (res.ok) loadTable('Recipient', 'recipient-table');
+}
+
+function addHospital() {
+  const id = document.getElementById('h_id').value.trim();
+  const name = document.getElementById('h_name').value.trim();
+  const loc = document.getElementById('h_loc').value.trim();
+  const contact = document.getElementById('h_contact').value.trim();
+  if (!id || !name) return showMsg('hospital-msg', 'Fill Hospital ID and Name.', false);
+  const res = execSQL(`INSERT INTO Hospital VALUES ('${id}','${name}','${loc}','${contact}');`);
+  showMsg('hospital-msg', res.ok ? '✅ Hospital added!' : '❌ ' + res.error, res.ok);
+  if (res.ok) loadTable('Hospital', 'hospital-table');
+}
+
+function addDoctor() {
+  const id = document.getElementById('doc_id').value.trim();
+  const name = document.getElementById('doc_name').value.trim();
+  const spec = document.getElementById('doc_spec').value.trim();
+  const contact = document.getElementById('doc_contact').value.trim();
+  const hospital = document.getElementById('doc_hospital').value.trim();
+  if (!id || !name) return showMsg('doctor-msg', 'Fill Doctor ID and Name.', false);
+  const res = execSQL(`INSERT INTO Doctor VALUES ('${id}','${name}','${spec}','${contact}','${hospital}');`);
+  showMsg('doctor-msg', res.ok ? '✅ Doctor added!' : '❌ ' + res.error, res.ok);
+  if (res.ok) loadTable('Doctor', 'doctor-table');
+}
+
+function addOrgan() {
+  const id = document.getElementById('o_id').value.trim();
+  const type = document.getElementById('o_type').value;
+  const blood = document.getElementById('o_blood').value;
+  const donor = document.getElementById('o_donor').value.trim();
+  const bank = document.getElementById('o_bank').value.trim();
+  const status = document.getElementById('o_status').value;
+  if (!id) return showMsg('organ-msg', 'Fill Organ ID.', false);
+  const res = execSQL(`INSERT INTO Organ VALUES ('${id}','${type}','${blood}','${donor}','${bank}','${status}');`);
+  showMsg('organ-msg', res.ok ? '✅ Organ added!' : '❌ ' + res.error, res.ok);
+  if (res.ok) loadTable('Organ', 'organ-table');
+}
+
+function addTransplant() {
+  const id = document.getElementById('t_id').value.trim();
+  const donor = document.getElementById('t_donor').value.trim();
+  const recipient = document.getElementById('t_recipient').value.trim();
+  const organ = document.getElementById('t_organ').value.trim();
+  const hospital = document.getElementById('t_hospital').value.trim();
+  const doctor = document.getElementById('t_doctor').value.trim();
+  const date = document.getElementById('t_date').value;
+  const status = document.getElementById('t_status').value;
+  if (!id || !donor || !recipient) return showMsg('transplant-msg', 'Fill required fields.', false);
+  const res = execSQL(`INSERT INTO Transplant VALUES ('${id}','${donor}','${recipient}','${organ}','${hospital}','${doctor}','${date}','${status}');`);
+  showMsg('transplant-msg', res.ok ? '✅ Transplant recorded!' : '❌ ' + res.error, res.ok);
+  if (res.ok) loadTable('Transplant', 'transplant-table');
+}
+
+function runQuery(key) {
+  const sql = QUERIES[key];
+  const res = execSQL(sql);
+  const el = document.getElementById('query-result');
+  el.innerHTML = `<p style="font-size:0.78em;color:#555;font-family:monospace;background:#f4f4f4;padding:8px;border-radius:4px;margin-bottom:10px">${sql}</p>`;
+  el.innerHTML += res.ok ? renderTable(res.result) : `<p class="msg err">${res.error}</p>`;
+}
+
+function runCustomSQL() {
+  const sql = document.getElementById('custom-sql').value.trim();
+  if (!sql) return;
+  const res = execSQL(sql);
+  document.getElementById('custom-result').innerHTML = res.ok ? renderTable(res.result) : `<p class="msg err">${res.error}</p>`;
+}
+
+function loadDashboard() {
+  const tables = ['Donor','Recipient','Hospital','Doctor','Organ','Transplant'];
+  const icons  = ['🩸','🧑‍⚕️','🏥','👨‍⚕️','🫁','💉'];
+  let html = '';
+  tables.forEach((t, i) => {
+    const r = execSQL(`SELECT COUNT(*) FROM ${t};`);
+    const count = r.ok && r.result.length ? r.result[0].values[0][0] : 0;
+    html += `<div style="background:#1a5276;color:white;border-radius:8px;padding:14px 20px;min-width:130px;text-align:center">
+      <div style="font-size:1.6em">${icons[i]}</div>
+      <div style="font-size:1.4em;font-weight:bold">${count}</div>
+      <div style="font-size:0.78em;color:#aed6f1">${t}s</div>
+    </div>`;
+  });
+  document.getElementById('dashboard-stats').innerHTML = html;
+
+  const matchRes = execSQL(`
+    SELECT R.Name AS Recipient, R.Blood_group, R.Required_organ, R.Priority_level,
+           O.Organ_Id, O.Status AS Organ_Status
+    FROM Recipient R
+    LEFT JOIN Organ O ON R.Required_organ = O.Organ_Type AND R.Blood_group = O.Blood_group AND O.Status = 'Available'
+    WHERE R.Priority_level IN ('Critical','High')
+    ORDER BY CASE R.Priority_level WHEN 'Critical' THEN 1 WHEN 'High' THEN 2 ELSE 3 END;
+  `);
+  document.getElementById('match-table').innerHTML = matchRes.ok ? renderTable(matchRes.result) : `<p class="msg err">${matchRes.error}</p>`;
+}
+
+// Initialize DB
+initSqlJs({ locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/${f}` }).then(SQL => {
+  db = new SQL.Database();
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS Hospital (
+      Hospital_Id TEXT PRIMARY KEY, Hospital_name TEXT, Location TEXT, Contact_no TEXT
+    );
+    CREATE TABLE IF NOT EXISTS Organ_Bank (
+      Bank_Id TEXT PRIMARY KEY, Bank_name TEXT, Location TEXT, Contact_no TEXT
+    );
+    CREATE TABLE IF NOT EXISTS Donor (
+      Donor_Id TEXT PRIMARY KEY, Name TEXT, Age INTEGER, Gender TEXT,
+      Blood_group TEXT, Contact_no TEXT, Organ_donated TEXT
+    );
+    CREATE TABLE IF NOT EXISTS Recipient (
+      Recipient_Id TEXT PRIMARY KEY, Name TEXT, Age INTEGER, Blood_group TEXT,
+      Required_organ TEXT, Priority_level TEXT, Hospital_Id TEXT,
+      FOREIGN KEY(Hospital_Id) REFERENCES Hospital(Hospital_Id)
+    );
+    CREATE TABLE IF NOT EXISTS Doctor (
+      Doctor_Id TEXT PRIMARY KEY, Doctor_name TEXT, Specialization TEXT,
+      Contact_no TEXT, Hospital_Id TEXT,
+      FOREIGN KEY(Hospital_Id) REFERENCES Hospital(Hospital_Id)
+    );
+    CREATE TABLE IF NOT EXISTS Organ (
+      Organ_Id TEXT PRIMARY KEY, Organ_Type TEXT, Blood_group TEXT,
+      Donor_Id TEXT, Bank_Id TEXT, Status TEXT,
+      FOREIGN KEY(Donor_Id) REFERENCES Donor(Donor_Id),
+      FOREIGN KEY(Bank_Id) REFERENCES Organ_Bank(Bank_Id)
+    );
+    CREATE TABLE IF NOT EXISTS Transplant (
+      Transplant_Id TEXT PRIMARY KEY, Donor_Id TEXT, Recipient_Id TEXT,
+      Organ_Id TEXT, Hospital_Id TEXT, Doctor_Id TEXT,
+      Transplant_date TEXT, Status TEXT,
+      FOREIGN KEY(Donor_Id) REFERENCES Donor(Donor_Id),
+      FOREIGN KEY(Recipient_Id) REFERENCES Recipient(Recipient_Id),
+      FOREIGN KEY(Organ_Id) REFERENCES Organ(Organ_Id),
+      FOREIGN KEY(Hospital_Id) REFERENCES Hospital(Hospital_Id),
+      FOREIGN KEY(Doctor_Id) REFERENCES Doctor(Doctor_Id)
+    );
+  `);
+
+  // Insert sample data (10+ rows each)
+  db.run(`
+    INSERT INTO Hospital VALUES
+      ('H001','Apollo Hospital','Mumbai','9000000001'),
+      ('H002','AIIMS Delhi','Delhi','9000000002'),
+      ('H003','Fortis Hospital','Bangalore','9000000003'),
+      ('H004','KEM Hospital','Mumbai','9000000004'),
+      ('H005','Medanta Hospital','Gurugram','9000000005'),
+      ('H006','Manipal Hospital','Pune','9000000006'),
+      ('H007','Kokilaben Hospital','Mumbai','9000000007'),
+      ('H008','Narayana Health','Kolkata','9000000008'),
+      ('H009','NIMHANS','Bangalore','9000000009'),
+      ('H010','Ruby Hall Clinic','Pune','9000000010');
+
+    INSERT INTO Organ_Bank VALUES
+      ('OB001','National Organ Bank','Mumbai','8000000001'),
+      ('OB002','Delhi Organ Repository','Delhi','8000000002'),
+      ('OB003','South India Organ Bank','Bangalore','8000000003'),
+      ('OB004','Pune Organ Centre','Pune','8000000004'),
+      ('OB005','Kolkata Organ Bank','Kolkata','8000000005');
+
+    INSERT INTO Donor VALUES
+      ('D001','Arun Sharma',35,'Male','O+','9800000001','Kidney'),
+      ('D002','Priya Mehta',28,'Female','A+','9800000002','Liver'),
+      ('D003','Rahul Verma',45,'Male','B+','9800000003','Heart'),
+      ('D004','Anjali Singh',32,'Female','AB+','9800000004','Lung'),
+      ('D005','Suresh Patil',50,'Male','O-','9800000005','Kidney'),
+      ('D006','Kavita Joshi',40,'Female','B-','9800000006','Cornea'),
+      ('D007','Arjun Nair',27,'Male','A-','9800000007','Liver'),
+      ('D008','Deepa Iyer',38,'Female','O+','9800000008','Kidney'),
+      ('D009','Mohan Das',55,'Male','AB-','9800000009','Pancreas'),
+      ('D010','Sunita Rao',30,'Female','A+','9800000010','Heart');
+
+    INSERT INTO Recipient VALUES
+      ('R001','Vikram Kumar',60,'O+','Kidney','Critical','H001'),
+      ('R002','Nita Shah',45,'A+','Liver','High','H002'),
+      ('R003','Ramesh Tiwari',55,'B+','Heart','Critical','H003'),
+      ('R004','Lalita Bose',38,'AB+','Lung','Medium','H004'),
+      ('R005','Kishore Gupta',70,'O-','Kidney','High','H005'),
+      ('R006','Meera Pillai',52,'B-','Cornea','Low','H006'),
+      ('R007','Harish Yadav',48,'A-','Liver','Critical','H007'),
+      ('R008','Sunanda Roy',63,'O+','Kidney','High','H008'),
+      ('R009','Prakash Nair',41,'AB-','Pancreas','Medium','H009'),
+      ('R010','Geeta Sharma',57,'A+','Heart','Critical','H010');
+
+    INSERT INTO Doctor VALUES
+      ('DR001','Dr. Anand Kulkarni','Transplant Surgery','9700000001','H001'),
+      ('DR002','Dr. Seema Joshi','Nephrology','9700000002','H002'),
+      ('DR003','Dr. Ravi Mehta','Cardiology','9700000003','H003'),
+      ('DR004','Dr. Priya Nair','Hepatology','9700000004','H004'),
+      ('DR005','Dr. Sunil Verma','Pulmonology','9700000005','H005'),
+      ('DR006','Dr. Archana Rao','Ophthalmology','9700000006','H006'),
+      ('DR007','Dr. Kiran Patil','Transplant Surgery','9700000007','H007'),
+      ('DR008','Dr. Neha Gupta','Nephrology','9700000008','H008'),
+      ('DR009','Dr. Arun Iyer','Endocrinology','9700000009','H009'),
+      ('DR010','Dr. Meena Singh','Cardiology','9700000010','H010');
+
+    INSERT INTO Organ VALUES
+      ('ORG001','Kidney','O+','D001','OB001','Available'),
+      ('ORG002','Liver','A+','D002','OB001','Available'),
+      ('ORG003','Heart','B+','D003','OB002','Available'),
+      ('ORG004','Lung','AB+','D004','OB002','Matched'),
+      ('ORG005','Kidney','O-','D005','OB003','Available'),
+      ('ORG006','Cornea','B-','D006','OB003','Available'),
+      ('ORG007','Liver','A-','D007','OB004','Matched'),
+      ('ORG008','Kidney','O+','D008','OB004','Available'),
+      ('ORG009','Pancreas','AB-','D009','OB005','Available'),
+      ('ORG010','Heart','A+','D010','OB005','Available');
+
+    INSERT INTO Transplant VALUES
+      ('T001','D001','R001','ORG001','H001','DR001','2024-01-15','Completed'),
+      ('T002','D002','R002','ORG002','H002','DR002','2024-02-20','Completed'),
+      ('T003','D003','R003','ORG003','H003','DR003','2024-03-10','Completed'),
+      ('T004','D004','R004','ORG004','H004','DR004','2024-04-05','Scheduled'),
+      ('T005','D005','R005','ORG005','H005','DR005','2024-05-18','Completed'),
+      ('T006','D006','R006','ORG006','H006','DR006','2024-06-22','Completed'),
+      ('T007','D007','R007','ORG007','H007','DR007','2024-07-30','Scheduled'),
+      ('T008','D008','R008','ORG008','H008','DR008','2024-08-14','Completed'),
+      ('T009','D009','R009','ORG009','H009','DR009','2024-09-19','Completed'),
+      ('T010','D010','R010','ORG010','H010','DR010','2024-10-25','Scheduled');
+  `);
+
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  loadDashboard();
+});
+</script>
+</body>
+</html>
